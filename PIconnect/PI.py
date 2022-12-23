@@ -69,7 +69,7 @@ class PIServer(object):  # pylint: disable=useless-object-inheritance
         username: Optional[str] = None,
         password: Optional[str] = None,
         domain: Optional[str] = None,
-        authentication_mode: PIConsts.AuthenticationMode = PIConsts.AuthenticationMode.PI_USER_AUTHENTICATION,
+        authentication_mode: PIConsts.AuthenticationMode = PIConsts.AuthenticationMode.WINDOWS_AUTHENTICATION,
         timeout: Optional[int] = None,
     ) -> None:
         if server is None:
@@ -131,6 +131,7 @@ class PIServer(object):  # pylint: disable=useless-object-inheritance
         return self
 
     def __exit__(self, *args: Any):
+        print("disconnecting from Pi Data Server")
         self.connection.Disconnect()
 
     def __repr__(self) -> str:

@@ -1,7 +1,8 @@
 """Mock classes for the AF namespace of the OSIsoft PI-AF SDK"""
-from typing import Iterator, List
+import enum
+from typing import Iterator, List, Optional, Union
 
-from . import PI, Asset, Data, EventFrame, Time, UnitsOfMeasure
+from . import PI, Asset, Data, Generic, EventFrame, Time, UnitsOfMeasure
 
 __all__ = [
     "Asset",
@@ -52,8 +53,11 @@ class PISystem:
         self.Databases = PISystem.InternalDatabases()
         self._connected = False
 
-    def Connect(self) -> None:
-        """Stub to connect to the testing system"""
+    def Connect(
+        self,
+        retry: Union[bool, Generic.NetworkCredential],
+    ) -> None:
+        """Stub for connecting to test server"""
         self._connected = True
 
     def Disconnect(self) -> None:

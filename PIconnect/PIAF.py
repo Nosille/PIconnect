@@ -5,6 +5,7 @@ import dataclasses
 import warnings
 from typing import Any, Dict, Optional, Union, cast
 
+import PIconnect._typing.Generic as _dotNetGeneric
 from PIconnect import AF, PIAFBase, PIConsts, _time
 from PIconnect._utils import InitialisationWarning
 
@@ -28,15 +29,6 @@ def _lookup_servers() -> Dict[str, ServerSpec]:
     for s in AF.PISystems():
         try:
             servers[s.Name] = server = PIAFServer(s)
-            for d in s.Databases:
-                try:
-                    server.databases[d.Name] = d
-                except (Exception, dotNetException) as e:  # type: ignore
-                    warnings.warn(
-                        f"Failed loading database data for {d.Name} on {s.Name} "
-                        f"with error {type(cast(Exception, e)).__qualname__}",
-                        InitialisationWarning,
-                    )
         except (Exception, dotNetException) as e:  # type: ignore
             warnings.warn(
                 f"Failed loading server data for {s.Name} "
@@ -45,8 +37,7 @@ def _lookup_servers() -> Dict[str, ServerSpec]:
             )
     return {
         server_name: {
-            "server": server.server,
-            "databases": {db_name: db for db_name, db in server.databases.items()},
+            "server": server.server
         }
         for server_name, server in servers.items()
     }
@@ -70,15 +61,55 @@ class PIAFDatabase(object):
 
     version = "0.2.0"
 
+    # print("Find Available AF Servers")
     servers: Dict[str, ServerSpec] = _lookup_servers()
+    # for s in AF.PISystems():
+    #     print("    " + str(s.Name))
+    # print("lookup default server")
     default_server: Optional[ServerSpec] = _lookup_default_server()
+    # print("found default server")
 
     def __init__(
-        self, server: Optional[str] = None, database: Optional[str] = None
+        self, 
+        server: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        domain: Optional[str] = None,
+        authentication_mode: PIConsts.AuthenticationMode = PIConsts.AuthenticationMode.WINDOWS_AUTHENTICATION,
+        timeout: Optional[int] = None, 
+        database: Optional[str] = None
     ) -> None:
+
+        # print("Setup credentials")
+        if bool(username) != bool(password):
+            raise ValueError(
+                "When passing credentials both the username and password must be specified."
+            )
+        if domain and not username:
+            raise ValueError(
+                "A domain can only specified together with a username and password."
+            )
+
+        if username:
+            from System.Net import NetworkCredential  # type: ignore
+            from System.Security import SecureString  # type: ignore
+
+            secure_pass = cast(_dotNetGeneric.SecureString, SecureString())
+            if password is not None:
+                for c in password:
+                    secure_pass.AppendChar(c)
+            cred = [username, secure_pass] + ([domain] if domain else [])
+            self._credentials = (
+                cast(_dotNetGeneric.NetworkCredential, NetworkCredential(*cred)),
+            )
+        else:
+            self._credentials = None
+        
+        # print("initialize server")
         server_spec = self._initialise_server(server)
         self.server: AF.PISystem = server_spec["server"]  # type: ignore
-        self.database: AF.AFDatabase = self._initialise_database(server_spec, database)
+        # print("PISystem:" + str(self.server.Name))
+        self.database: AF.AFDatabase = self._initialise_database(database)
 
     def _initialise_server(self, server: Optional[str]) -> ServerSpec:
         if server is None:
@@ -98,28 +129,28 @@ class PIAFDatabase(object):
         return self.servers[server]
 
     def _initialise_database(
-        self, server: ServerSpec, database: Optional[str]
+        self, database: Optional[str]
     ) -> AF.AFDatabase:
+        self.server.Connect(*self._credentials)
         default_db = self.server.Databases.DefaultDatabase
+        # print("Default Database:" + str(default_db.Name))
         if database is None:
             return default_db
 
-        databases = cast(Dict[str, AF.AFDatabase], server["databases"])
-        if database not in databases:
-            message = 'Database "{database}" not found, using the default database.'
-            warnings.warn(
-                message=message.format(database=database), category=UserWarning
-            )
-            return default_db
 
-        return databases[database]
+        return self.server.Databases[database]
 
     def __enter__(self) -> "PIAFDatabase":
-        self.server.Connect()
+        # if self._credentials:
+        #     self.server.Connect(*self._credentials)
+        # else:    
+        #     self.server.Connect()
+
         return self
 
     def __exit__(self, *args: Any) -> None:
         pass
+        print("disconnecting from Pi AF Server")
         # Disabled disconnecting because garbage collection sometimes impedes
         # connecting to another server later
         # self.server.Disconnect()
